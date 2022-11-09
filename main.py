@@ -1,15 +1,17 @@
 # Imports
+import RGB2GrayTransformer
+import HogTransformer
 import joblib
 import numpy as np
 import matplotlib.pyplot as plt
+import pandas as pd
 import os
-import pprint
 from skimage.io import imread
 from skimage.transform import resize
 from sklearn.model_selection import train_test_split
-from skimage.feature import hog
-from skimage.transform import rescale
-from collections import Counter
+from sklearn.linear_model import SGDClassifier
+from sklearn.model_selection import cross_val_predict
+from sklearn.preprocessing import StandardScaler, Normalizer
 
 
 # Read, resize, and store the data into a dictionary
@@ -52,7 +54,7 @@ def main():
     os.listdir(data_path)
 
     # Include all the letter folders from ASL dataset
-    include = {'A', 'B', 'C', 'D', 'E', 'F',
+    include = {'nothing', 'A', 'B', 'C', 'D', 'E', 'F',
                'G', 'H', 'I', 'J', 'K', 'L',
                'M', 'N', 'O', 'P', 'Q', 'R', 'S',
                'T', 'U', 'V', 'W', 'X', 'Y', 'Z'}
@@ -79,13 +81,14 @@ def main():
     # setup matplotlib figure and axis
     fig, axes = plt.subplots(1, len(labels), figsize=(15, 4))
 
+    # (Can use for presentation of data)
     # make a plot to show examples of each label from dataset
     for ax, label in zip(axes, labels):
         index = data['label'].index(label)
         ax.imshow(data['data'][index])
         ax.axis('off')
         ax.set_title(label)
-    plt.show()
+    # plt.show() Commented out until needed to store image for presentation
 
     # Split data into test set and training set
     # Use 80% for training and remaining data for test-set
@@ -102,7 +105,40 @@ def main():
         random_state=42,
     )
 
-    # Transform image into HOG
+    # Create instances of RGB2Gray and Hog Transformers
+    grayify = RGB2GrayTransformer.RGB2GrayTransformer()
+    hogify = HogTransformer.HogTransformer(
+        pixels_per_cell=(14, 14),
+        cells_per_block=(2, 2),
+        orientations=9,
+        block_norm='L2-Hys'
+    )
+
+    scalify = StandardScaler()
+
+    # Transform training data and testing data into usable data
+    X_train_gray = grayify.fit_transform(X_train)
+    X_train_hog = hogify.fit_transform(X_train_gray)
+    X_train_prepared = scalify.fit_transform(X_train_hog)
+
+    # Used for debugging / displaying numerical values of dataset
+    # print(X_train_prepared)
+
+    # Train the model using the Stochastic Gradient Descent (SGD) Classifier Model
+    sgd_clf = SGDClassifier(random_state=42, max_iter=1000,
+                            tol=1e-3)  # Random_state is used to recreate the 'random' training
+    sgd_clf.fit(X_train_prepared, y_train)  # Train the model with the PREPARED dataset
+
+    # Setup Testing Data
+    X_test_gray = grayify.transform(X_test)
+    X_test_hog = hogify.transform(X_test_gray)
+    X_test_prepared = scalify.transform(X_test_hog)
+
+    # Train the SGD ASL Recognition Model and Measure Performance
+    y_pred = sgd_clf.predict(X_test_prepared)
+
+    print(np.array(y_pred == y_test)[:25])
+    print('\nPercentage Correct: ', 100 * np.sum(y_pred == y_test) / len(y_test))
 
 
 if __name__ == "__main__":
