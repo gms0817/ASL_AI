@@ -3,6 +3,7 @@ import skimage
 import numpy as np
 from sklearn.base import BaseEstimator, TransformerMixin
 
+
 # Covert array of RGB Images to grayscale
 class RGB2GrayTransformer(BaseEstimator, TransformerMixin):
     def __init__(self):

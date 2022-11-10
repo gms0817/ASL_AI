@@ -3,12 +3,13 @@ import numpy as np
 from skimage.feature import hog
 from sklearn.base import BaseEstimator, TransformerMixin
 
+
 # Calculates hog features for images. Pass its constructor a 2d array of images
 class HogTransformer(BaseEstimator, TransformerMixin):
     def __init__(self, y=None, orientations=9,
-                 pixels_per_cell=(8,8),
-                 cells_per_block=(3,3),
-                 block_norm ='L2-Hys'):
+                 pixels_per_cell=(8, 8),
+                 cells_per_block=(3, 3),
+                 block_norm='L2-Hys'):
         self.y = y
         self.orientations = orientations
         self.pixels_per_cell = pixels_per_cell
@@ -21,10 +22,11 @@ class HogTransformer(BaseEstimator, TransformerMixin):
     def transform(self, X, y=None):
         def local_hog(X):
             return hog(X,
-                        orientations=self.orientations,
-                        pixels_per_cell=self.pixels_per_cell,
-                        cells_per_block=self.cells_per_block,
-                        block_norm=self.block_norm)
+                       orientations=self.orientations,
+                       pixels_per_cell=self.pixels_per_cell,
+                       cells_per_block=self.cells_per_block,
+                       block_norm=self.block_norm)
+
         try:
             return np.array([local_hog(img) for img in X])
         except:

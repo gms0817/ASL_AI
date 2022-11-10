@@ -64,7 +64,7 @@ def main():
     width = 80
 
     # Resize / Prep All Images from Dataset (Only needs to be called if pkl hasn't been created)
-    resize_all(src=data_path, pklname=base_name, width=width, include=include)
+    # resize_all(src=data_path, pklname=base_name, width=width, include=include)
 
     # Load data from disk and print summary of the data
     data = joblib.load(f'{base_name}_{width}x{width}px.pkl')
