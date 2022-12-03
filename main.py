@@ -1,25 +1,24 @@
 # Imports
-import RGB2GrayTransformer
-import HogTransformer
-import joblib
-import numpy as np
-import matplotlib.pyplot as plt
 import os
-import PIL
 
-import cvzone
 import cv2
-from cvzone.HandTrackingModule import HandDetector
-
+import joblib
+import matplotlib.pyplot as plt
+import numpy as np
+import tensorflow as tf
+import mediapipe as mp
 from PIL import Image
+from cvzone.HandTrackingModule import HandDetector
+from google.protobuf.json_format import MessageToDict
+from keras.layers import Dense, Conv2D, MaxPool2D, Flatten, Dropout
+from keras.models import Sequential
+from keras.optimizers import Adam
+from keras.preprocessing.image import ImageDataGenerator
 from skimage.io import imread
 from skimage.transform import resize
-from sklearn.model_selection import train_test_split
-from sklearn.linear_model import SGDClassifier
-from sklearn.preprocessing import StandardScaler, Normalizer
+from keras.layers import Dense, Dropout, Flatten, Conv2D, MaxPooling2D, BatchNormalization
 
 
-# Rotate the images 5,10,15, and 20 degrees left and right to improve dataset
 def rotate_all(src, include):
     # Read all images in the path and write to a new destination path
     for subdir in os.listdir(src):
@@ -78,12 +77,11 @@ def resize_all(src, pklname, include, width=150, height=None):
         data['data'] = []
 
         # Read all images in the path and write to a new destination path
-        i = 0
         for subdir in os.listdir(src):
             if subdir in include:
                 print(f'Loaded "{subdir}"')
                 current_path = os.path.join(src, subdir)
-
+                i = 0
                 # Populate the dictionary
                 for file in os.listdir(current_path):
                     while i < 1000:
@@ -99,117 +97,238 @@ def resize_all(src, pklname, include, width=150, height=None):
         return data
 
 
-def plot_dataset(data):
-    # Get all unique values in the list of labels
-    labels = np.unique(data['label'])
+def get_data(label):
+    # Load the data
+    labels = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M',
+              'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
+              'nothing', 'space', 'del']
 
-    # setup matplotlib figure and axis
-    fig, axes = plt.subplots(1, len(labels), figsize=(15, 4))
+    img_size = 224
+    data = []
 
-    # make a plot to show examples of each label from dataset
-    for ax, label in zip(axes, labels):
-        index = data['label'].index(label)
-        ax.imshow(data['data'][index])
-        ax.axis('off')
-        ax.set_title(label)
-    plt.show()  # Commented out until needed to store image for presentation
+    for label in labels:
+        path = os.path.join('res/asl', label)
+        class_num = labels.index(label)
+        for img in os.listdir(path):
+            try:
+                img_arr = cv2.imread(os.path.join(path, img))[..., ::-1]  # Convert BGR to RGB
+                resized_arr = cv2.resize(img_arr, (img_size, img_size))  # Reshape images to preferred size
+                data.append([resized_arr, class_num])
+            except Exception as e:
+                print(e)
 
-
-def plot_training_results(pass_score_dict, fail_score_dict):
-    print('Reached plot_training_results()')
-
-    # Plot performance
-    plt.rcParams['figure.figsize'] = [7.5, 3.5]
-    plt.rcParams['figure.autolayout'] = True
-
-    # Pass Performance
-    pass_score_dict = np.array(pass_score_dict)
-    x = np.arange(0, len(pass_score_dict))
-    y = pass_score_dict
-    plt.plot(x, y, color="blue", label="Pass")
-
-    # Fail performance
-    fail_score_dict = np.array(fail_score_dict)
-    x_fail = np.arange(0, len(fail_score_dict))
-    y_fail = fail_score_dict
-    plt.plot(x_fail, y_fail, color="red", label="Fail")
-
-    # Customize Scatter Plot
-    plt.title("SGD Classifier Accuracy")
-    plt.xlabel("Number of Samples")
-    plt.ylabel("Accuracy (%)")
-    plt.legend()
-
-    plt.show()  # Show the scatter plot
+    return np.array(data)
 
 
-def get_classifier(data):
-    print('Reached get_classifier().\nRetrieving Classification Model...')
-    # Split data into test set and training set
-    # Use 80% for training and remaining data for test-set
-    # Use train_test_split since we have multiple 'categories'
-    X = np.array(data['data'])
-    y = np.array(data['label'])
+def get_cnn():
+    # Attempt to load the model
+    model = None
+    try:
+        model = joblib.load('model.sav')
+        return model
+    except:
+        # Create model if model is not found
+        img_size = 224
 
-    # Perform train_test_split
-    X_train, X_test, y_train, y_test = train_test_split(
-        X,
-        y,
-        test_size=0.20,  # 20% Test Size
-        shuffle=True,  # Randomize samples
-        random_state=100,
-    )
+        # Prepare the data
+        training_data = get_data('res/asl')
+        validation_data = get_data('res/asl/asl-alphabet-test')
+        print('Data prepared.')
 
-    # Create instances of RGB2Gray and Hog Transformers
-    grayify = RGB2GrayTransformer.RGB2GrayTransformer()
-    hogify = HogTransformer.HogTransformer(
-        pixels_per_cell=(14, 14),
-        cells_per_block=(2, 2),
-        orientations=9,
-        block_norm='L2-Hys'
-    )
+        # Data Preprocessing and Data Augmentation
+        x_train = []
+        y_train = []
+        x_validation = []
+        y_validation = []
 
-    scalify = StandardScaler()
+        for feature, label in training_data:
+            x_train.append(feature)
+            y_train.append(label)
+        for feature, label in validation_data:
+            x_validation.append(feature)
+            y_validation.append(label)
 
-    # Transform training data and testing data into usable data
-    X_train_gray = grayify.fit_transform(X_train)
-    X_train_hog = hogify.fit_transform(X_train_gray)
-    X_train_prepared = scalify.fit_transform(X_train_hog)
-    # Used for debugging / displaying numerical values of dataset
-    # print(X_train_prepared)
+        # Normalize the Data
+        x_train = np.array(x_train) / 255
+        x_validation = np.array(x_validation) / 255
 
-    # Train the model using the Stochastic Gradient Descent (SGD) Classifier Model
-    sgd_clf = SGDClassifier(random_state=100, max_iter=1000,
-                            tol=1e-3)  # Random_state is used to recreate the 'random' training
-    sgd_clf.fit(X_train_prepared, y_train)  # Train the model with the PREPARED dataset
-    print(sgd_clf)
-    # Setup Testing Data
-    X_test_gray = grayify.transform(X_test)
-    X_test_hog = hogify.transform(X_test_gray)
-    X_test_prepared = scalify.transform(X_test_hog)
+        x_train.reshape(-1, img_size, img_size, 1)
+        y_train = np.array(y_train)
 
-    # Train the SGD ASL Recognition Model and Measure Performance
-    y_pred = sgd_clf.predict(X_test_prepared)
-    pass_count, fail_count = 0, 0
-    pass_score_dict = []
-    fail_score_dict = []
-    for i in range(0, len(X_test_prepared)):
-        if y_pred[i] == y_test[i]:
-            pass_count = pass_count + 1
-        else:
-            fail_count = fail_count + 1
-        pass_score = pass_count / len(X_test_prepared)
-        pass_score_dict.append(pass_score)
+        x_validation.reshape(-1, img_size, img_size, 1)
+        y_validation = np.array(y_validation)
 
-        fail_score = fail_count / len(X_test_prepared)
-        fail_score_dict.append(fail_score)
-    # Plot testing performance
-    plot_training_results(pass_score_dict, fail_score_dict)
+        # Data Augmentation
+        datagen = ImageDataGenerator(
+            featurewise_center=False,  # set input mean to 0 over the dataset
+            samplewise_center=False,  # set each sample mean to 0
+            featurewise_std_normalization=False,  # divide inputs by std of the dataset
+            samplewise_std_normalization=False,  # divide each input by its std
+            zca_whitening=False,  # apply ZCA whitening
+            rotation_range=30,  # randomly rotate images in the range (degrees, 0 to 180)
+            zoom_range=0.2,  # Randomly zoom image
+            width_shift_range=0.1,  # randomly shift images horizontally (fraction of total width)
+            height_shift_range=0.1,  # randomly shift images vertically (fraction of total height)
+            horizontal_flip=True,  # randomly flip images
+            vertical_flip=False)  # randomly flip images
+        datagen.fit(x_train)
 
-    print(np.array(y_pred == y_test)[:25])
-    print('\nPercentage Correct: ', 100 * np.sum(y_pred == y_test) / len(y_test))
-    joblib.dump(sgd_clf, 'model.sav')
-    return sgd_clf
+        # Define the model
+        classes = 29
+        batch = 32
+        epochs = 15
+        learning_rate = 0.001
+
+        model = Sequential()
+
+        model.add(Conv2D(64, (3, 3), padding='same', input_shape=(224, 224, 3), activation='relu'))
+        model.add(MaxPooling2D(pool_size=(2, 2)))
+        model.add(BatchNormalization())
+
+        model.add(Conv2D(128, (3, 3), padding='same', input_shape=(224, 224, 3), activation='relu'))
+        model.add(MaxPooling2D(pool_size=(2, 2)))
+        model.add(BatchNormalization())
+        model.add(Dropout(0.2))
+
+        model.add(Conv2D(256, (3, 3), padding='same', input_shape=(224, 224, 3), activation='relu'))
+        model.add(MaxPooling2D(pool_size=(2, 2)))
+        model.add(BatchNormalization())
+
+        model.add(Flatten())
+        model.add(Dropout(0.2))
+        model.add(Dense(1024, activation='relu'))
+        model.add(Dense(classes, activation='softmax'))
+
+        adam = Adam(lr=learning_rate)
+        model.compile(optimizer=adam,
+                      loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
+                      metrics=['accuracy'])
+
+        model.summary()
+
+        history = model.fit(x_train, y_train,
+                            batch_size=batch, epochs=epochs,
+                            validation_data=(x_validation, y_validation),
+                            shuffle=True, verbose=1)
+        """
+        # CNN - 3 Convolutional Layers followed by max pooling layers
+        model = Sequential()
+        model.add(Conv2D(32, 3, padding="same", activation="relu", input_shape=(224, 224, 3)))
+        model.add(MaxPool2D())
+
+        model.add(Conv2D(32, 3, padding="same", activation="relu"))
+        model.add(MaxPool2D())
+
+        model.add(Conv2D(64, 3, padding="same", activation="relu"))
+        model.add(MaxPool2D())
+        model.add(Dropout(0.4))  # Used to help avoid overfitting
+
+        model.add(Flatten())
+        model.add(Dense(128, activation="relu"))
+        model.add(Dense(29, activation="softmax"))  # Use 29 because we have 29 labels
+
+        model.summary()
+
+        # Compile the model using Adam optimizer
+        opt = Adam(learning_rate=0.001)
+        model.compile(optimizer=opt, loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
+                      metrics=['accuracy'])
+
+        # Train model for 500 epochs because of small learning rate
+        history = model.fit(x_train, y_train,
+                            epochs=5, batch_size=32, 
+                            validation_data=(x_validation, y_validation),
+                            shuffle=True, verbose=1) """
+
+        acc = history.history['accuracy']
+        val_acc = history.history['val_accuracy']
+        loss = history.history['loss']
+        val_loss = history.history['val_loss']
+
+        epochs_range = range(5)
+
+        plt.figure(figsize=(15, 15))
+        plt.subplot(2, 2, 1)
+        plt.plot(epochs_range, acc, label='Training Accuracy')
+        plt.plot(epochs_range, val_acc, label='Validation Accuracy')
+        plt.legend(loc='lower right')
+        plt.title('Training and Validation Accuracy')
+
+        plt.subplot(2, 2, 2)
+        plt.plot(epochs_range, loss, label='Training Loss')
+        plt.plot(epochs_range, val_loss, label='Validation Loss')
+        plt.legend(loc='upper right')
+        plt.title('Training and Validation Loss')
+        plt.show()
+
+        # Save the model
+        joblib.dump(model, 'model.sav')
+
+        return model
+
+
+def num_to_letter(pred):
+    apred = ""
+    if pred == 0:
+        apred = 'A'
+    elif pred == 1:
+        apred = 'B'
+    elif pred == 2:
+        apred = 'C'
+    elif pred == 3:
+        apred = 'D'
+    elif pred == 4:
+        apred = 'E'
+    elif pred == 5:
+        apred = 'F'
+    elif pred == 6:
+        apred = 'G'
+    elif pred == 7:
+        apred = 'H'
+    elif pred == 8:
+        apred = 'I'
+    elif pred == 9:
+        apred = 'J'
+    elif pred == 10:
+        apred = 'K'
+    elif pred == 11:
+        apred = 'L'
+    elif pred == 12:
+        apred = 'M'
+    elif pred == 13:
+        apred = 'N'
+    elif pred == 14:
+        apred = 'O'
+    elif pred == 15:
+        apred = 'P'
+    elif pred == 16:
+        apred = 'Q'
+    elif pred == 17:
+        apred = 'R'
+    elif pred == 18:
+        apred = 'S'
+    elif pred == 19:
+        apred = 'T'
+    elif pred == 20:
+        apred = 'U'
+    elif pred == 21:
+        apred = 'V'
+    elif pred == 22:
+        apred = 'W'
+    elif pred == 22:
+        apred = 'X'
+    elif pred == 23:
+        apred = 'Y'
+    elif pred == 24:
+        apred = 'Z'
+    elif pred == 25:
+        apred = 'nothing'
+    elif pred == 26:
+        apred = 'del'
+    elif pred == 27:
+        apred = 'space'
+
+    return str(apred)
 
 
 # Main Function
@@ -221,79 +340,76 @@ def main():
     try:
         model = joblib.load('model.sav')
         return model
-    except:
+    except Exception as e:
         print('Preparing Data...')
         # Set the filepath
         data_path = 'res/asl'
         os.listdir(data_path)
 
-        # Include all the letter folders from ASL dataset
-        include = {'nothing', 'A', 'B', 'C', 'D', 'E', 'F',
-                   'del', 'G', 'H', 'I', 'J', 'K', 'L',
-                   'space', 'M', 'N', 'O', 'P', 'Q', 'R', 'S',
-                   'T', 'U', 'V', 'W', 'X', 'Y', 'Z'}
-
-        # Resize all images to 80px by 80px
-        base_name = 'asl'
-        width = 80
-
-        # Resize / Prep All Images from Dataset (Only needs to be called if pkl hasn't been created)
-        # rotate_all(src=data_path, include=include)
-        data = resize_all(src=data_path, pklname=base_name, width=width, include=include)
-
-        # Load data from disk and print summary of the data
-        # data = joblib.load(f'{base_name}_{width}x{width}px.pkl')
-        print('Data prepared.')
-        print('number of samples: ', len(data['data']))
-        print('keys: ', list(data.keys()))
-        print('image shape: ', data['data'][0].shape)
-        print('labels:', np.unique(data['label']))
-        model = get_classifier(data)
+        # Load the model
+        model = get_cnn()
     print('Retrieved Classification Model.')
 
     print('Loading CV...')
     # Computer Vision
-    stream = cv2.VideoCapture(0)
-    stream.set(3, 640)
-    stream.set(4, 480)
+    stream = cv2.VideoCapture(0, cv2.CAP_DSHOW)
+    stream.set(3, 740)
+    stream.set(4, 580)
 
-    grayify = RGB2GrayTransformer.RGB2GrayTransformer()
-    hogify = HogTransformer.HogTransformer(
-        pixels_per_cell=(14, 14),
-        cells_per_block=(2, 2),
-        orientations=9,
-        block_norm='L2-Hys'
-    )
     detector = HandDetector(detectionCon=0.5, maxHands=1)
 
     while True:
         print('CV Running...')
-        data = dict()
-        data['data'] = []
+        data = []
 
         # Capture frame from video
         success, img = stream.read()
 
-        # Find the hand and it's landmarks
-        im = detector.findHands(img)
-        lmList, bbox = detector.findPosition(im)
+        # Find hands and put bbox on hand
+        img = detector.findHands(img)
+        lmList, bbox = detector.findPosition(img)
 
-        # Resize image and add to df
-        im = resize(im, (80, 80, 3))
-        data['data'].append(im)
+        # Check which hand is on screen
+        processed_img = img  # Used to not show the user the potentially flipped image
+        handType = detector.handType()
+        if lmList and handType is not None:
 
-        X_test_gray = grayify.transform(data['data'])
-        X_test_hog = hogify.transform(X_test_gray)
+            if handType == 'Left':
+                # Put hand label on image
+                cv2.putText(img, 'Left Hand', (20, 70), cv2.FONT_HERSHEY_COMPLEX, 0.9, (0, 255, 0), 2)
 
-        # print(f'X_test_prepared: {X_test_hog}')
+                # Flip the image
+                processed_img = cv2.flip(img, 1)
 
-        # Make a Prediction
-        pred = model.predict(X_test_hog)
-        print(pred)
+            if handType == 'Right':
+                # Put hand label on image
+                cv2.putText(img, 'Right Hand', (20, 70), cv2.FONT_HERSHEY_COMPLEX, 0.9, (0, 255, 0), 2)
+
+            # Convert BGR to RGB img array
+            img_arr = processed_img[..., ::-1]
+
+            # Resize image array and store image data into numpy array
+            resized_arr = cv2.resize(img_arr, (224, 224))
+            data.append(resized_arr)
+            data = np.array(data) / 255
+            data.reshape(-1, 224, 224, 1)
+
+            # Make a Prediction
+            pred = model.predict(data)
+            pred = pred.reshape(1, -1)[0]
+            pred_classes = np.argmax(pred, axis=0)
+
+            # Convert num to letter
+            apred = num_to_letter(pred_classes)
+            print(apred)
+
+            # Put prediction on image
+            cv2.putText(img, str(apred), (10, 70), cv2.FONT_HERSHEY_PLAIN, 3, (255, 0, 255), 3)
 
         # Show Frame
         cv2.imshow('CV', img)
-        cv2.waitKey(10)  # Update every 10 frames
+        cv2.waitKey(1)  # Update every 10 frames
+
     # Close program
     cv2.destroyAllWindows()
 
