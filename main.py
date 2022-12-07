@@ -29,6 +29,7 @@ def get_cnn():
         # Load test and training data
         train_path = 'res/train'
         test_path = 'res/test'
+
         train_batches = ImageDataGenerator(
             preprocessing_function=tf.keras.applications.vgg16.preprocess_input).flow_from_directory(
             directory=train_path, target_size=(64, 64), class_mode='categorical', batch_size=10, shuffle=True)
@@ -152,7 +153,8 @@ def main():
 
     # Setup Word Dict
     word_dict = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M',
-                 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z']
+                 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
+                 'del','space']
 
     while True:
         print('CV Running...')
