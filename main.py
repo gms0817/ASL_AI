@@ -186,9 +186,7 @@ class RealTimeRecognition(ttk.Frame):
     def __init__(self, parent, controller):
         ttk.Frame.__init__(self, parent)
         print('Loading CV...')
-
-        # Setup thread
-        self.cvThread = threading.Thread(target=self.run)
+        self.controller = controller
 
         # Bind visible frame event
         self.bind("<<ShowFrame>>", self.startThread)
@@ -196,6 +194,11 @@ class RealTimeRecognition(ttk.Frame):
         # Create label to capture video frames and display them
         self.video_label = ttk.Label(self)
         self.video_label.place(x=0, y=0, )
+
+        # Place Home Screen Buttom
+        self.homeImg = tk.PhotoImage(file='res/img/home.png').subsample(15, 15)
+        homeBtn = ttk.Button(self.video_label, image=self.homeImg, width=10, command=self.goHome)
+        homeBtn.place(x=640 - 70, y=10)
 
         # Setup video capture
         self.running = False
@@ -206,8 +209,6 @@ class RealTimeRecognition(ttk.Frame):
         self.num_frames = 0
         self.accumulated_weight = 0.5
         self.count = 0
-
-
 
         # Setup Word Dict
         self.word_dict = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M',
@@ -223,7 +224,25 @@ class RealTimeRecognition(ttk.Frame):
             self.run()
 
     def startThread(self, args):
-        self.cvThread.start()
+        # Setup thread
+        cvThread = threading.Thread(target=self.run)
+        try:
+            cvThread.start()
+            print('cvThread has started.')
+        except RuntimeError:
+            print('cvThread is already running.')
+            self.run()
+
+
+    def goHome(self):
+        print('Reached goHome().')
+        # Reset background and frames
+        self.running = False
+        self.background = None
+        self.num_frames = 0
+
+        # Go to home page
+        self.controller.show_frame(HomePage)
     def run(self):
         print('Reached RealTimeRecognition.run()')
         self.running = True
@@ -273,7 +292,7 @@ class RealTimeRecognition(ttk.Frame):
             gray_frame = cv2.GaussianBlur(gray_frame, (9, 9), 0)  # Smooth the image
 
             # Get the background
-            if self.num_frames < 70:
+            if self.num_frames < 120:
                 # Scan background for later comparison
                 self.cal_accum_avg(gray_frame, self.accumulated_weight)
                 cv2.putText(frame_copy, "Scanning Background... Please wait.",
@@ -293,7 +312,7 @@ class RealTimeRecognition(ttk.Frame):
                     thresh_holded = cv2.resize(thresh_holded, (64, 64))
                     thresh_holded = cv2.cvtColor(thresh_holded, cv2.COLOR_GRAY2RGB)
                     thresh_holded = np.reshape(thresh_holded,
-                                             (1, thresh_holded.shape[0], thresh_holded.shape[1], 3))
+                                               (1, thresh_holded.shape[0], thresh_holded.shape[1], 3))
                     # Make prediction
                     pred = asl.model.predict(thresh_holded)
                     cv2.putText(frame_copy, f'Prediction: {self.word_dict[np.argmax(pred)]}',
@@ -309,7 +328,9 @@ class RealTimeRecognition(ttk.Frame):
             self.num_frames += 1
 
             # Display the frame with segmented hand
-            im = Image.fromarray(frame_copy)
+            rgbIm = cv2.cvtColor(frame_copy, cv2.COLOR_BGR2RGB)
+            im = Image.fromarray(rgbIm)
+
             imgtk = ImageTk.PhotoImage(image=im)
             self.video_label.imgtk = imgtk
             self.video_label.configure(image=imgtk)
