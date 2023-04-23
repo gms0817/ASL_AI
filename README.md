@@ -1,2 +1,2 @@
 # ASL_AI
-AI4ALL Group 5 ASL AI Project
+v2.0.0 Individual Work
