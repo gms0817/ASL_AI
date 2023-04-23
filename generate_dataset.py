@@ -107,7 +107,7 @@ while True:
             # Displaying the thresholded image
             cv2.imshow("Thresholded Hand Image", thresholded)
             if num_imgs_taken <= 300:
-                cv2.imwrite(f'res/train/{str(element)}/' + str(element) + "-" +
+                cv2.imwrite(f'res/sample/{str(element)}/' + str(element) + "-" +
                             str(num_imgs_taken + 300) + '.jpg', thresholded)
 
             else:

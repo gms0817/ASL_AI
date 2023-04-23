@@ -1,5 +1,4 @@
 # Imports
-import os
 import threading
 
 import cv2
@@ -8,9 +7,9 @@ import numpy as np
 import sv_ttk
 import tkinter as tk
 from tkinter import ttk
+from tkinter import filedialog
 import tensorflow as tf
 import warnings
-import time
 from keras.layers import MaxPool2D
 from keras.models import Sequential
 from keras.optimizers import Adam, SGD
@@ -146,36 +145,51 @@ class HomePage(ttk.Frame):
     def __init__(self, parent, controller):
         ttk.Frame.__init__(self, parent)
         self.controller = controller
+
         # Setup window dimensions
-        window_width = 720
+        window_width = 640
         window_height = 480
 
         # Body Frame
         body_frame = ttk.Frame(self, width=window_width, height=window_height - 400)
-        body_frame.pack(side="top", pady=75, fill="x", expand=True)
+        body_frame.pack(side="top", pady=10, fill="x", expand=True)
         body_frame.anchor('center')
 
+        # Title Text
+        titleLabel = ttk.Label(body_frame, text='ASLAR', font=("Arial", 25))
+        titleLabel.pack(padx=10, pady=10)
+
         # Load images
-        self.rtrBtn = tk.PhotoImage(file="res/img/realtime.png").subsample(8, 8)
-        self.prBtn = tk.PhotoImage(file="res/img/photo.png").subsample(8, 8)
-        self.vrBtn = tk.PhotoImage(file="res/img/video.png").subsample(8, 8)
+        self.rtrBtn = tk.PhotoImage(file="res/img/realtime.png").subsample(10, 10)
+        self.prBtn = tk.PhotoImage(file="res/img/photo.png").subsample(10, 10)
+        self.vrBtn = tk.PhotoImage(file="res/img/video.png").subsample(10, 10)
 
-        # Real-Time Recognition
         # https://www.flaticon.com/free-icons/time-management created by Abdul-Aziz - Flaticon
-        rtrBtn = ttk.Button(body_frame, text="Realtime", image=self.rtrBtn, width=5,
+        rtrBtn = ttk.Button(body_frame, text="Realtime", image=self.rtrBtn,
                             command=lambda: controller.show_frame(RealTimeRecognition))
-
         rtrBtn.pack(ipadx=20, padx=10, pady=10)
+
+        # Real-Time Recognition Label
+        rtrLabel = ttk.Label(body_frame, text='Real Time ASL Recognition')
+        rtrLabel.pack(padx=10, pady=10)
 
         # Photo Recognition
         # https://www.flaticon.com/free-icons/picture - created by Pixel perfect - Flaticon
-        prBtn = ttk.Button(body_frame, image=self.prBtn)
+        prBtn = ttk.Button(body_frame, image=self.prBtn, command=lambda: controller.show_frame(PhotoRecognition))
         prBtn.pack(ipadx=20, padx=10, pady=10)
+
+        # Photo  Recognition Label
+        prBtn = ttk.Label(body_frame, text='Photo ASL Recognition')
+        prBtn.pack(padx=10, pady=10)
 
         # Video Recognition
         # https://www.flaticon.com/free-icons/video created by Freepik - Flaticon
-        vrBtn = ttk.Button(body_frame, image=self.vrBtn)
+        vrBtn = ttk.Button(body_frame, image=self.vrBtn, command=lambda: controller.show_frame(VideoRecognition))
         vrBtn.pack(ipadx=20, padx=10, pady=10)
+
+        # Photo  Recognition Label
+        prBtn = ttk.Label(body_frame, text='Video ASL Recognition')
+        prBtn.pack(padx=10, pady=10)
 
         # Footer Frame
         footer_frame = ttk.Frame(self, width=window_width, height=window_height - 200)
@@ -233,7 +247,6 @@ class RealTimeRecognition(ttk.Frame):
             print('cvThread is already running.')
             self.run()
 
-
     def goHome(self):
         print('Reached goHome().')
         # Reset background and frames
@@ -243,6 +256,7 @@ class RealTimeRecognition(ttk.Frame):
 
         # Go to home page
         self.controller.show_frame(HomePage)
+
     def run(self):
         print('Reached RealTimeRecognition.run()')
         self.running = True
@@ -340,6 +354,44 @@ class RealTimeRecognition(ttk.Frame):
 class PhotoRecognition(ttk.Frame):
     def __init__(self, parent, controller):
         ttk.Frame.__init__(self, parent)
+        self.controller = controller
+        self.img_file = None
+
+        body_frame = ttk.Frame(self, width=window_width, height=window_height - 400)
+        body_frame.pack(side="top", pady=10, fill="x", expand=True)
+        body_frame.anchor('center')
+
+        img_frame = ttk.Frame(body_frame, width=300)
+        img_frame.pack()
+
+        img_pred_label = ttk.Label(body_frame, text='Waiting on image...')
+        img_pred_label.pack()
+
+        file_select_btn = ttk.Button(body_frame, text='Select an Image', command=self.select_file)
+        file_select_btn.pack()
+
+        classification_btn = ttk.Button(body_frame, text='Predict ASL', command=self.classify_img)
+        classification_btn.pack()
+
+        # Footer Frame
+        footer_frame = ttk.Frame(self, width=window_width, height=window_height - 200)
+        footer_frame.pack(side="bottom", fill="x")
+
+    def select_file(self):
+        # File chooser
+        filetypes = (
+            ('PNG', '*.png'),
+            ('JPG', '*.jpg'),
+            ('JPEG', '*.jpeg')
+        )
+
+        # Load file from the user
+        self.img_file = filedialog.askopenfilename(title='Select an Image of ASL',
+                                                   initialdir='/',
+                                                   filetypes=filetypes)
+
+    def classify_img(self):
+        classification = asl.model.predict
 
 
 class VideoRecognition(ttk.Frame):
@@ -360,7 +412,7 @@ if __name__ == "__main__":
     window_height = 480
 
     # Set the theme of program
-    sv_ttk.set_theme("dark")
+    sv_ttk.set_theme("light")
     print('Theme Set.')
 
     # Load the ASL Recognition Model
